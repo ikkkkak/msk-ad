@@ -6,10 +6,27 @@ import { Button } from "@/components/ui/button";
 import {
   AdminProperty,
   AdminHostStats,
+  AdminUser,
   getAdminProperty,
+  getAdminUser,
+  listAdminAmenities,
   updatePropertyStatus,
   flagProperty,
 } from "@/lib/api";
+
+/** Old server binaries ship images/amenities as raw JSON strings — normalize. */
+function parseMaybeJsonArray(v: unknown): unknown[] {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string" && v.trim().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 
 /* ---------- small presentational atoms (Fashion-Nova-clean: uppercase
    micro-labels, thin dividers, generous whitespace, bold values) ---------- */
@@ -79,6 +96,8 @@ export default function PropertyReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [prop, setProp] = useState<AdminProperty | null>(null);
   const [hostStats, setHostStats] = useState<AdminHostStats | null>(null);
+  const [host, setHost] = useState<AdminUser | null>(null);
+  const [amenityNames, setAmenityNames] = useState<Map<number, string>>(new Map());
   const [heroIdx, setHeroIdx] = useState(0);
   const [acting, setActing] = useState(false);
 
@@ -89,6 +108,23 @@ export default function PropertyReviewPage() {
       const res = await getAdminProperty(id);
       setProp(res.data);
       setHostStats(res.meta?.host_stats ?? null);
+
+      // Live binary may return an empty host object (ID 0) — fall back to
+      // fetching the full user record by hostID so the dossier is complete
+      // no matter which server version answers.
+      const embedded = res.data.host;
+      if (embedded && embedded.ID > 0) {
+        setHost(embedded);
+      } else if (res.data.hostID) {
+        try {
+          const u = await getAdminUser(res.data.hostID);
+          setHost(u.data?.user ?? null);
+        } catch {
+          setHost(null);
+        }
+      } else {
+        setHost(null);
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to load");
     } finally {
@@ -101,24 +137,46 @@ export default function PropertyReviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Amenity IDs → localized names (the property stores bare amenity ids).
+  useEffect(() => {
+    listAdminAmenities()
+      .then((res) => {
+        const map = new Map<number, string>();
+        for (const a of res.data ?? []) {
+          map.set(a.id, a.name?.en || a.name?.fr || a.name?.ar || String(a.id));
+        }
+        setAmenityNames(map);
+      })
+      .catch(() => {});
+  }, []);
+
   const images: string[] = useMemo(() => {
-    if (!prop?.images) return [];
-    if (Array.isArray(prop.images)) {
-      return prop.images
-        .map((im: any) => (typeof im === "string" ? im : im?.url || im?.src))
-        .filter(Boolean);
-    }
-    return [];
+    return parseMaybeJsonArray(prop?.images)
+      .map((im: any) => (typeof im === "string" ? im : im?.url || im?.src))
+      .filter(Boolean);
   }, [prop]);
 
   const hero =
     images[heroIdx] || prop?.coverImage || prop?.thumbnailURL || "/property-placeholder.jpg";
 
-  const host = prop?.host;
   const hostName =
     [host?.firstName, host?.lastName].filter(Boolean).join(" ") ||
     (host ? `User #${host.ID}` : "—");
-  const amenities = Array.isArray(prop?.amenities) ? prop!.amenities : [];
+
+  /** Amenity labels: ids resolved to names; anything unrecognized shows as-is. */
+  const amenities: string[] = useMemo(() => {
+    return parseMaybeJsonArray(prop?.amenities)
+      .map((a: any) => {
+        if (typeof a === "object" && a?.name) return String(a.name);
+        const raw = String(a);
+        const asId = Number(raw);
+        if (Number.isFinite(asId) && amenityNames.has(asId)) {
+          return amenityNames.get(asId)!;
+        }
+        return raw;
+      })
+      .filter(Boolean);
+  }, [prop, amenityNames]);
 
   const act = async (fn: () => Promise<unknown>) => {
     setActing(true);
