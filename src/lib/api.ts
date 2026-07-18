@@ -667,10 +667,11 @@ export async function listAdminProperties(params: {
 export async function getAdminProperty(
   id: number,
 ): Promise<{ data: AdminProperty; meta?: { host_stats?: AdminHostStats } }> {
-  // Host is always included server-side; media/reviews via include.
+  // No include param: host is always preloaded server-side (new binary),
+  // images ship via the JSON column on every binary, and `include=media`
+  // triggers a bogus Preload on old deployments that 404s a real property.
   return apiGet<{ data: AdminProperty; meta?: { host_stats?: AdminHostStats } }>(
     `/admin/properties/${id}`,
-    { include: "media,reviews" },
   );
 }
 
