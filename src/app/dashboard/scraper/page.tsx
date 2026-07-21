@@ -175,10 +175,27 @@ export default function ScraperPage() {
 
         <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-900">
           <b>Two modes:</b> Leave all selectors <b>empty</b> to <b>crawl the whole
-          site</b> and extract information (ministry, cadastre, land, housing
+          site</b> (reads the sitemap + follows every internal link, up to ~1,200
+          pages, depth 8) and extract information (ministry, cadastre, land, housing
           procedures) — best for government/institutional sites like ijraati.gov.mr.
           Fill selectors below to extract <b>listing cards</b> from a property portal.
         </div>
+        <label className="mt-3 flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={selectors._store_all === "true"}
+            onChange={(e) =>
+              setSelectors((s) => ({
+                ...s,
+                _store_all: e.target.checked ? "true" : "",
+              }))
+            }
+          />
+          <span>
+            <b>Store every page</b> (not just real-estate-filtered) — use for a
+            dedicated housing/land/cadastre site where all content matters.
+          </span>
+        </label>
         <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           CSS selectors — map the page onto our fields (listing-card mode only)
         </div>
