@@ -90,11 +90,23 @@ export default function ScraperPage() {
     setBusyId(id);
     setError(null);
     try {
-      const res = await runScrapedSource(id);
-      await load();
+      // Scrape runs in the BACKGROUND on the server (returns immediately so
+      // the proxy can't time out). Poll the source status + listings until
+      // it finishes or ~30s elapses.
+      await runScrapedSource(id);
+      let done = false;
+      for (let i = 0; i < 15 && !done; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const fresh = await listScrapedSources();
+        setSources(fresh.data ?? []);
+        const s = (fresh.data ?? []).find((x) => x.id === id);
+        if (s && s.last_status && s.last_status !== "running…") done = true;
+      }
       const listings = await listScrapedListings({ source_id: id, limit: 30 });
       setPreview({ id, rows: listings.data ?? [] });
-      void res;
+      if (!done) {
+        setError("Scrape is taking a while — showing latest results; refresh for more.");
+      }
     } catch (e: any) {
       setError(e?.message || "Scrape failed");
     } finally {

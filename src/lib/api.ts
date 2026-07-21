@@ -3157,7 +3157,8 @@ export async function deleteScrapedSource(id: number): Promise<{ success: boolea
 
 export async function runScrapedSource(
   id: number,
-): Promise<{ data: { item_count: number; inserted: number; updated: number; status: string }; source: ScrapedSource }> {
+): Promise<{ status: string; source_id: number; poll?: string }> {
+  // Server runs the scrape in the background and returns 202 immediately.
   return adminSend(`/admin/scraper/sources/${id}/run`, "POST");
 }
 
