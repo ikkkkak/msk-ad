@@ -173,8 +173,14 @@ export default function ScraperPage() {
           </select>
         </div>
 
+        <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-900">
+          <b>Two modes:</b> Leave all selectors <b>empty</b> to <b>crawl the whole
+          site</b> and extract information (ministry, cadastre, land, housing
+          procedures) — best for government/institutional sites like ijraati.gov.mr.
+          Fill selectors below to extract <b>listing cards</b> from a property portal.
+        </div>
         <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          CSS selectors — map the page onto our fields
+          CSS selectors — map the page onto our fields (listing-card mode only)
         </div>
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
           {SELECTOR_FIELDS.map((f) => (
