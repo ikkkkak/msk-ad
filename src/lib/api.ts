@@ -3068,3 +3068,103 @@ export async function sendAdminListingTestEmail(body: {
   }
   return data;
 }
+
+/* ── MeskenyGPT web-scraping (admin) ───────────────────────────────────── */
+
+export type ScrapedSource = {
+  id: number;
+  name: string;
+  url: string;
+  kind: string;
+  selectors?: Record<string, string> | null;
+  active: boolean;
+  last_scraped_at?: string | null;
+  last_status?: string;
+  last_item_count?: number;
+  created_at?: string;
+};
+
+export type ScrapedListing = {
+  id: number;
+  source_id: number;
+  kind: string;
+  title?: string;
+  description?: string;
+  price_text?: string;
+  price_value?: number | null;
+  currency?: string;
+  location?: string;
+  city?: string;
+  area_m2?: number | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  property_type?: string;
+  image_url?: string;
+  source_url?: string;
+  scraped_at?: string;
+};
+
+async function adminSend<T>(
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  const data = await safeJson(res);
+  if (!res.ok) {
+    throw new Error(data?.message || data?.error || `Request failed (${res.status})`);
+  }
+  return data as T;
+}
+
+export async function listScrapedSources(): Promise<{ data: ScrapedSource[] }> {
+  return apiGet<{ data: ScrapedSource[] }>("/admin/scraper/sources");
+}
+
+export async function createScrapedSource(body: {
+  name: string;
+  url: string;
+  kind: string;
+  selectors?: Record<string, string>;
+  active?: boolean;
+}): Promise<{ data: ScrapedSource }> {
+  return adminSend("/admin/scraper/sources", "POST", body);
+}
+
+export async function updateScrapedSource(
+  id: number,
+  body: Partial<{
+    name: string;
+    url: string;
+    kind: string;
+    selectors: Record<string, string>;
+    active: boolean;
+  }>,
+): Promise<{ data: ScrapedSource }> {
+  return adminSend(`/admin/scraper/sources/${id}`, "PATCH", body);
+}
+
+export async function deleteScrapedSource(id: number): Promise<{ success: boolean }> {
+  return adminSend(`/admin/scraper/sources/${id}`, "DELETE");
+}
+
+export async function runScrapedSource(
+  id: number,
+): Promise<{ data: { item_count: number; inserted: number; updated: number; status: string }; source: ScrapedSource }> {
+  return adminSend(`/admin/scraper/sources/${id}/run`, "POST");
+}
+
+export async function listScrapedListings(params?: {
+  source_id?: number;
+  kind?: string;
+  limit?: number;
+}): Promise<{ data: ScrapedListing[] }> {
+  return apiGet<{ data: ScrapedListing[] }>("/admin/scraper/listings", params);
+}
