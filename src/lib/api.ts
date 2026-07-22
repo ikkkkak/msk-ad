@@ -3169,3 +3169,12 @@ export async function listScrapedListings(params?: {
 }): Promise<{ data: ScrapedListing[] }> {
   return apiGet<{ data: ScrapedListing[] }>("/admin/scraper/listings", params);
 }
+
+export async function scraperHeadlessCheck(): Promise<{
+  headless_available: boolean;
+  detail: string;
+}> {
+  return apiGet<{ headless_available: boolean; detail: string }>(
+    "/admin/scraper/headless-check",
+  );
+}

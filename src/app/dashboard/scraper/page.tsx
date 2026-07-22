@@ -10,6 +10,7 @@ import {
   deleteScrapedSource,
   runScrapedSource,
   listScrapedListings,
+  scraperHeadlessCheck,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -42,6 +43,8 @@ export default function ScraperPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [preview, setPreview] = useState<{ id: number; rows: ScrapedListing[] } | null>(null);
+  const [headless, setHeadless] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [headlessChecking, setHeadlessChecking] = useState(false);
 
   // New-source form
   const [name, setName] = useState("");
@@ -141,6 +144,46 @@ export default function ScraperPage() {
           {error}
         </div>
       ) : null}
+
+      {/* Headless-Chromium diagnostic (needed for JS-rendered sites) */}
+      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border p-3">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={headlessChecking}
+          onClick={async () => {
+            setHeadlessChecking(true);
+            try {
+              const r = await scraperHeadlessCheck();
+              setHeadless({ ok: r.headless_available, detail: r.detail });
+            } catch (e: any) {
+              setHeadless({ ok: false, detail: e?.message || "check failed" });
+            } finally {
+              setHeadlessChecking(false);
+            }
+          }}
+        >
+          {headlessChecking ? "Checking…" : "Check headless browser"}
+        </Button>
+        {headless ? (
+          <span className="text-sm">
+            <span
+              className={`mr-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                headless.ok
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-red-100 text-red-700"
+              }`}
+            >
+              {headless.ok ? "AVAILABLE" : "UNAVAILABLE"}
+            </span>
+            <span className="text-muted-foreground">{headless.detail}</span>
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            Needed to scrape JavaScript-rendered sites (e.g. ijraati.gov.mr).
+          </span>
+        )}
+      </div>
 
       {/* New source */}
       <div className="mb-8 rounded-2xl border p-5">
