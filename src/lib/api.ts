@@ -3202,3 +3202,12 @@ export async function listScrapedAPICalls(
   );
   return res.data || [];
 }
+
+export async function pasteScrapedJSON(body: {
+  name: string;
+  kind?: string;
+  url?: string;
+  json: string;
+}): Promise<{ status: string; source_id: number; inserted: number }> {
+  return adminSend("/admin/scraper/paste", "POST", body);
+}

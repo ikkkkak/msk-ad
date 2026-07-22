@@ -13,6 +13,7 @@ import {
   scraperHeadlessCheck,
   listScrapedAPICalls,
   ScrapedAPICall,
+  pasteScrapedJSON,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -48,6 +49,10 @@ export default function ScraperPage() {
   const [apiPreview, setApiPreview] = useState<{ id: number; rows: ScrapedAPICall[] } | null>(null);
   const [headless, setHeadless] = useState<{ ok: boolean; detail: string } | null>(null);
   const [headlessChecking, setHeadlessChecking] = useState(false);
+  const [pasteName, setPasteName] = useState("");
+  const [pasteJson, setPasteJson] = useState("");
+  const [pasteBusy, setPasteBusy] = useState(false);
+  const [pasteResult, setPasteResult] = useState<string | null>(null);
 
   // New-source form
   const [name, setName] = useState("");
@@ -186,6 +191,61 @@ export default function ScraperPage() {
             Needed to scrape JavaScript-rendered sites (e.g. ijraati.gov.mr).
           </span>
         )}
+      </div>
+
+      {/* Paste external JSON → becomes AI knowledge */}
+      <div className="mb-8 rounded-2xl border p-5">
+        <h2 className="mb-1 text-lg font-semibold">Paste external JSON</h2>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Already crawled or scraped data somewhere else? Paste the raw JSON
+          here. MeskenyGPT stores it as citable knowledge and uses it as context
+          when answering users&apos; questions. Any shape works — an array of
+          objects, a single object, or a wrapper with a{" "}
+          <code className="rounded bg-muted px-1">data</code>/
+          <code className="rounded bg-muted px-1">items</code>/
+          <code className="rounded bg-muted px-1">results</code> array.
+        </p>
+        <input
+          className="mb-3 w-full rounded-lg border px-3 py-2 text-sm"
+          placeholder="Name (e.g. Cadastre FAQ export)"
+          value={pasteName}
+          onChange={(e) => setPasteName(e.target.value)}
+        />
+        <textarea
+          className="mb-3 h-48 w-full rounded-lg border px-3 py-2 font-mono text-xs"
+          placeholder='[{"title":"How to transfer land ownership","description":"…","url":"https://…"}]'
+          value={pasteJson}
+          onChange={(e) => setPasteJson(e.target.value)}
+        />
+        <div className="flex items-center gap-3">
+          <Button
+            disabled={pasteBusy || !pasteJson.trim()}
+            onClick={async () => {
+              setPasteBusy(true);
+              setPasteResult(null);
+              try {
+                const r = await pasteScrapedJSON({
+                  name: pasteName.trim() || "Pasted data",
+                  kind: "market_info",
+                  json: pasteJson,
+                });
+                setPasteResult(`Imported ${r.inserted} record(s) — the AI can now use them.`);
+                setPasteJson("");
+                setPasteName("");
+                load();
+              } catch (e: any) {
+                setPasteResult(e?.message || "Import failed");
+              } finally {
+                setPasteBusy(false);
+              }
+            }}
+          >
+            {pasteBusy ? "Importing…" : "Import as AI knowledge"}
+          </Button>
+          {pasteResult ? (
+            <span className="text-sm text-muted-foreground">{pasteResult}</span>
+          ) : null}
+        </div>
       </div>
 
       {/* New source */}
