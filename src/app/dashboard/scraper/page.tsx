@@ -11,6 +11,8 @@ import {
   runScrapedSource,
   listScrapedListings,
   scraperHeadlessCheck,
+  listScrapedAPICalls,
+  ScrapedAPICall,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -43,6 +45,7 @@ export default function ScraperPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [preview, setPreview] = useState<{ id: number; rows: ScrapedListing[] } | null>(null);
+  const [apiPreview, setApiPreview] = useState<{ id: number; rows: ScrapedAPICall[] } | null>(null);
   const [headless, setHeadless] = useState<{ ok: boolean; detail: string } | null>(null);
   const [headlessChecking, setHeadlessChecking] = useState(false);
 
@@ -318,6 +321,24 @@ export default function ScraperPage() {
                   <Button size="sm" onClick={() => onRun(s.id)} disabled={busyId === s.id}>
                     {busyId === s.id ? "Scraping…" : "Run now"}
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      if (apiPreview?.id === s.id) {
+                        setApiPreview(null);
+                        return;
+                      }
+                      try {
+                        const rows = await listScrapedAPICalls(s.id, 50);
+                        setApiPreview({ id: s.id, rows });
+                      } catch {
+                        setApiPreview({ id: s.id, rows: [] });
+                      }
+                    }}
+                  >
+                    {apiPreview?.id === s.id ? "Hide APIs" : "View APIs"}
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => onToggle(s)}>
                     {s.active ? "Pause" : "Activate"}
                   </Button>
@@ -345,6 +366,37 @@ export default function ScraperPage() {
                           <span className="truncate">{r.title}</span>
                           <span className="text-muted-foreground">{r.location}</span>
                         </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {/* Captured AJAX/API responses (the JSON behind JS sites) */}
+              {apiPreview?.id === s.id ? (
+                <div className="mt-4 rounded-xl border bg-muted/20 p-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {apiPreview.rows.length} captured API response(s)
+                  </div>
+                  {apiPreview.rows.length === 0 ? (
+                    <div className="text-xs text-muted-foreground">
+                      No API responses captured yet — run the source; JSON-driven
+                      pages will populate this after the next crawl.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {apiPreview.rows.slice(0, 20).map((r) => (
+                        <details key={r.id} className="text-xs">
+                          <summary className="cursor-pointer truncate">
+                            <span className="mr-2 rounded bg-slate-200 px-1 font-mono text-[10px]">
+                              {r.method || r.resource_type} {r.status}
+                            </span>
+                            <span className="font-mono">{r.api_url}</span>
+                          </summary>
+                          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-900 p-2 text-[11px] text-slate-100">
+                            {r.body.slice(0, 4000)}
+                          </pre>
+                        </details>
                       ))}
                     </div>
                   )}

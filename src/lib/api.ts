@@ -3178,3 +3178,27 @@ export async function scraperHeadlessCheck(): Promise<{
     "/admin/scraper/headless-check",
   );
 }
+
+export type ScrapedAPICall = {
+  id: number;
+  source_id: number;
+  page_url: string;
+  api_url: string;
+  method: string;
+  resource_type: string;
+  status: number;
+  content_type: string;
+  body: string;
+  body_size: number;
+  scraped_at: string;
+};
+
+export async function listScrapedAPICalls(
+  sourceId: number,
+  limit = 50,
+): Promise<ScrapedAPICall[]> {
+  const res = await apiGet<{ data: ScrapedAPICall[] }>(
+    `/admin/scraper/api-calls?source_id=${sourceId}&limit=${limit}`,
+  );
+  return res.data || [];
+}
