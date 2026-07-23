@@ -113,7 +113,7 @@ export default function ScraperPage() {
         const s = (fresh.data ?? []).find((x) => x.id === id);
         if (s && s.last_status && s.last_status !== "running…") done = true;
       }
-      const listings = await listScrapedListings({ source_id: id, limit: 30 });
+      const listings = await listScrapedListings({ source_id: id, limit: 200 });
       setPreview({ id, rows: listings.data ?? [] });
       if (!done) {
         setError("Scrape is taking a while — showing latest results; refresh for more.");
