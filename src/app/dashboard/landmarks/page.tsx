@@ -8,8 +8,17 @@ import {
   listAdminOrganizations,
   adminSetLandmarkOrganization,
   adminDeleteLandmark,
+  listAdminCities,
+  listAdminZones,
+  listAdminQuartiers,
+  uploadImage,
+  lookupHabitatPlot,
   type AdminLandmark,
   type AdminOrganization,
+  type AdminCity,
+  type AdminZone,
+  type AdminQuartier,
+  type HabitatPlotLookupResult,
 } from "@/lib/api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -339,11 +348,26 @@ export default function AdminLandmarksPage() {
     elevation_m: string;
     video_url: string;
     images: string[];
+    city_id: number | null;
+    zone_id: number | null;
+    quartier_id: number | null;
+    habitat_plot_id: number | null;
   };
   const [editing, setEditing] = useState<AdminLandmark | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
-  const [newImageUrl, setNewImageUrl] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Location picker data (loaded once) + image upload / cadastre-link state.
+  const [cities, setCities] = useState<AdminCity[]>([]);
+  const [zones, setZones] = useState<AdminZone[]>([]);
+  const [quartiers, setQuartiers] = useState<AdminQuartier[]>([]);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [linkingPlot, setLinkingPlot] = useState(false);
+  const [plotLink, setPlotLink] = useState<
+    | { status: "linked"; plot: HabitatPlotLookupResult }
+    | { status: "error"; message: string }
+    | null
+  >(null);
 
   function openEdit(l: AdminLandmark) {
     setEditForm({
@@ -360,8 +384,17 @@ export default function AdminLandmarksPage() {
       elevation_m: (l as any).elevation_m != null ? String((l as any).elevation_m) : "",
       video_url: l.video_url ?? "",
       images: Array.isArray(l.images) ? [...l.images] : [],
+      city_id: l.city_id ?? null,
+      zone_id: l.zone_id ?? null,
+      quartier_id: l.quartier_id ?? null,
+      habitat_plot_id: l.habitat_plot_id ?? null,
     });
-    setNewImageUrl("");
+    // Seed the cadastre-link banner from the landmark's current link state.
+    if (l.habitat_plot_id && l.cadastre_plot) {
+      setPlotLink({ status: "linked", plot: l.cadastre_plot });
+    } else {
+      setPlotLink(null);
+    }
     setEditing(l);
   }
 
@@ -384,6 +417,10 @@ export default function AdminLandmarksPage() {
         elevation_m: editForm.elevation_m.trim() ? Number(editForm.elevation_m) : 0,
         video_url: editForm.video_url.trim(),
         images: editForm.images,
+        city_id: editForm.city_id ?? 0,
+        zone_id: editForm.zone_id ?? 0,
+        quartier_id: editForm.quartier_id ?? 0,
+        habitat_plot_id: editForm.habitat_plot_id ?? 0,
       });
       setEditing(null);
       setEditForm(null);
@@ -425,6 +462,73 @@ export default function AdminLandmarksPage() {
       }
     })();
   }, []);
+
+  // Location picker data — cities, zones, quartiers (cascade filtered in the sheet).
+  useEffect(() => {
+    (async () => {
+      try {
+        const [c, z, q] = await Promise.all([
+          listAdminCities(),
+          listAdminZones(),
+          listAdminQuartiers(),
+        ]);
+        setCities(c.data || []);
+        setZones(z.data || []);
+        setQuartiers(q.data || []);
+      } catch {
+        /* pickers will show empty; admin can still edit other fields */
+      }
+    })();
+  }, []);
+
+  // Upload a chosen image file and append its hosted URL to the form's images.
+  async function uploadEditImage(file: File) {
+    setUploadingImage(true);
+    setError(null);
+    try {
+      const url = await uploadImage(file);
+      setEditForm((f) => (f ? { ...f, images: [...f.images, url] } : f));
+    } catch (e: any) {
+      setError(e?.message || "Image upload failed");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  // Resolve the typed plot number against the quartier's cadastre sector and
+  // stage the matched habitat_plot_id for saving.
+  async function linkPlot() {
+    if (!editForm) return;
+    const qid = editForm.quartier_id;
+    const pn = editForm.plot_number.trim();
+    if (!qid) {
+      setPlotLink({ status: "error", message: "Pick a quartier first" });
+      return;
+    }
+    if (!pn) {
+      setPlotLink({ status: "error", message: "Enter a plot number first" });
+      return;
+    }
+    setLinkingPlot(true);
+    setPlotLink(null);
+    try {
+      const { plot, reason } = await lookupHabitatPlot(qid, pn);
+      if (plot && plot.id) {
+        setEditForm((f) => (f ? { ...f, habitat_plot_id: plot.id } : f));
+        setPlotLink({ status: "linked", plot });
+      } else {
+        setEditForm((f) => (f ? { ...f, habitat_plot_id: null } : f));
+        setPlotLink({
+          status: "error",
+          message: reason || "No cadastre plot found with this number in the sector",
+        });
+      }
+    } catch (e: any) {
+      setPlotLink({ status: "error", message: e?.message || "Lookup failed" });
+    } finally {
+      setLinkingPlot(false);
+    }
+  }
 
   async function onVerify(landmark: AdminLandmark, isVerified: boolean) {
     setIsVerifying(true);
@@ -834,9 +938,6 @@ export default function AdminLandmarksPage() {
                   ["area_unit", "Area unit", "text"],
                   ["land_type", "Land type", "text"],
                   ["zoning", "Zoning", "text"],
-                  ["district", "District", "text"],
-                  ["region", "Region", "text"],
-                  ["plot_number", "Plot number", "text"],
                   ["elevation_m", "Elevation (m)", "number"],
                   ["video_url", "Video URL", "text"],
                 ] as [keyof EditForm, string, string][]
@@ -866,6 +967,169 @@ export default function AdminLandmarksPage() {
                   }
                   className="mt-1 w-full min-h-[90px] rounded-md border px-3 py-2 text-sm"
                 />
+              </div>
+
+              {/* ── Location (cascading pickers) ── */}
+              <div className="rounded-lg border p-3 space-y-3">
+                <Label className="text-xs font-semibold">Location</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {/* City */}
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground">City</Label>
+                    <select
+                      value={editForm.city_id ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value ? Number(e.target.value) : null;
+                        // Changing city clears the dependent zone/quartier + plot link.
+                        setEditForm((f) =>
+                          f
+                            ? { ...f, city_id: v, zone_id: null, quartier_id: null, habitat_plot_id: null }
+                            : f,
+                        );
+                        setPlotLink(null);
+                      }}
+                      className="mt-1 w-full rounded-md border px-2 py-2 text-sm bg-background"
+                    >
+                      <option value="">— Select —</option>
+                      {cities.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                          {c.name_ar ? ` · ${c.name_ar}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Zone */}
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground">Zone</Label>
+                    <select
+                      value={editForm.zone_id ?? ""}
+                      disabled={!editForm.city_id}
+                      onChange={(e) => {
+                        const v = e.target.value ? Number(e.target.value) : null;
+                        setEditForm((f) =>
+                          f
+                            ? { ...f, zone_id: v, quartier_id: null, habitat_plot_id: null }
+                            : f,
+                        );
+                        setPlotLink(null);
+                      }}
+                      className="mt-1 w-full rounded-md border px-2 py-2 text-sm bg-background disabled:opacity-50"
+                    >
+                      <option value="">— Select —</option>
+                      {zones
+                        .filter((z) => z.city_id === editForm.city_id)
+                        .map((z) => (
+                          <option key={z.id} value={z.id}>
+                            {z.name}
+                            {z.name_ar ? ` · ${z.name_ar}` : ""}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  {/* Quartier */}
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground">Quartier</Label>
+                    <select
+                      value={editForm.quartier_id ?? ""}
+                      disabled={!editForm.zone_id}
+                      onChange={(e) => {
+                        const v = e.target.value ? Number(e.target.value) : null;
+                        // New quartier invalidates any existing cadastre match.
+                        setEditForm((f) =>
+                          f ? { ...f, quartier_id: v, habitat_plot_id: null } : f,
+                        );
+                        setPlotLink(null);
+                      }}
+                      className="mt-1 w-full rounded-md border px-2 py-2 text-sm bg-background disabled:opacity-50"
+                    >
+                      <option value="">— Select —</option>
+                      {quartiers
+                        .filter((q) => q.zone_id === editForm.zone_id)
+                        .map((q) => (
+                          <option key={q.id} value={q.id}>
+                            {q.name}
+                            {q.name_ar ? ` · ${q.name_ar}` : ""}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+                {/* Free-text descriptive labels (district / region) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(
+                    [
+                      ["district", "District (label)"],
+                      ["region", "Region (label)"],
+                    ] as [keyof EditForm, string][]
+                  ).map(([key, label]) => (
+                    <div key={key}>
+                      <Label className="text-[11px] text-muted-foreground">{label}</Label>
+                      <input
+                        type="text"
+                        value={(editForm[key] as string) ?? ""}
+                        onChange={(e) =>
+                          setEditForm((f) => (f ? { ...f, [key]: e.target.value } : f))
+                        }
+                        className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Cadastre link ── */}
+              <div className="rounded-lg border p-3 space-y-2">
+                <Label className="text-xs font-semibold">Cadastre plot</Label>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Label className="text-[11px] text-muted-foreground">Plot number</Label>
+                    <input
+                      type="text"
+                      value={editForm.plot_number}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        // Editing the number breaks the confirmed link until re-verified.
+                        setEditForm((f) =>
+                          f ? { ...f, plot_number: v, habitat_plot_id: null } : f,
+                        );
+                        setPlotLink(null);
+                      }}
+                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={linkingPlot || !editForm.quartier_id || !editForm.plot_number.trim()}
+                    onClick={linkPlot}
+                  >
+                    {linkingPlot ? "Linking…" : "Link to cadastre"}
+                  </Button>
+                </div>
+                {!editForm.quartier_id && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Pick a quartier above to enable cadastre linking.
+                  </p>
+                )}
+                {plotLink?.status === "linked" && (
+                  <div className="rounded-md border border-green-500/40 bg-green-500/10 px-3 py-2 text-xs text-green-700 dark:text-green-400">
+                    ✅ Linked to cadastre plot #{plotLink.plot.plot_number}
+                    {plotLink.plot.area_m2 ? ` · ${plotLink.plot.area_m2} m²` : ""}
+                    {plotLink.plot.sector_name ? ` · ${plotLink.plot.sector_name}` : ""}
+                    {plotLink.plot.plan_code ? ` · ${plotLink.plot.plan_code}` : ""}
+                  </div>
+                )}
+                {plotLink?.status === "error" && (
+                  <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-400">
+                    ⚠️ {plotLink.message}
+                  </div>
+                )}
+                {!plotLink && editForm.habitat_plot_id && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Currently linked (plot #{editForm.habitat_plot_id}).
+                  </p>
+                )}
               </div>
 
               {/* Images CRUD */}
@@ -901,29 +1165,23 @@ export default function AdminLandmarksPage() {
                       </Button>
                     </div>
                   ))}
-                  <div className="flex items-center gap-2">
+                  <label className="flex items-center justify-center gap-2 cursor-pointer rounded-md border border-dashed px-3 py-3 text-sm text-muted-foreground hover:bg-accent/40 transition">
                     <input
-                      placeholder="Paste image URL…"
-                      value={newImageUrl}
-                      onChange={(e) => setNewImageUrl(e.target.value)}
-                      className="flex-1 rounded-md border px-3 py-2 text-sm"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!newImageUrl.trim()}
-                      onClick={() => {
-                        const u = newImageUrl.trim();
-                        if (!u) return;
-                        setEditForm((f) =>
-                          f ? { ...f, images: [...f.images, u] } : f,
-                        );
-                        setNewImageUrl("");
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      disabled={uploadingImage}
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        e.target.value = ""; // allow re-selecting the same file
+                        for (const file of files) {
+                          await uploadEditImage(file);
+                        }
                       }}
-                    >
-                      Add
-                    </Button>
-                  </div>
+                    />
+                    {uploadingImage ? "Uploading…" : "＋ Upload image(s)"}
+                  </label>
                 </div>
               </div>
             </div>

@@ -1700,6 +1700,11 @@ export async function adminUpdateLandmark(
     media_type: string;
     images: string[];
     sides: string[];
+    city_id: number;
+    zone_id: number;
+    quartier_id: number;
+    habitat_plot_id: number;
+    plot_confirmed: boolean;
     is_investment_opportunity: boolean;
     is_good_deal: boolean;
     is_gold: boolean;
@@ -1718,6 +1723,40 @@ export async function adminUpdateLandmark(
   if (!res.ok)
     throw new Error((await safeJson(res))?.error || `Failed (${res.status})`);
   return res.json();
+}
+
+export type HabitatPlotLookupResult = {
+  id: number;
+  plot_number: string;
+  area_m2?: number;
+  sector_name?: string;
+  plan_name?: string;
+  plan_code?: string;
+};
+
+// Resolves a plot number within a quartier's cadastre sector to a habitat plot.
+// Returns null when no cadastre plot matches (so the admin knows the link failed).
+export async function lookupHabitatPlot(
+  quartierId: number,
+  plotNumber: string,
+): Promise<{ plot: HabitatPlotLookupResult | null; reason?: string }> {
+  const url = `${API_BASE}/habitat/plots/lookup?quartier_id=${quartierId}&plot_number=${encodeURIComponent(
+    plotNumber,
+  )}`;
+  const res = await fetch(url, {
+    headers: {
+      ...(getAccessToken()
+        ? { Authorization: `Bearer ${getAccessToken()}` }
+        : {}),
+    },
+  });
+  if (!res.ok)
+    throw new Error((await safeJson(res))?.error || `Failed (${res.status})`);
+  const data = await res.json();
+  return {
+    plot: (data?.data as HabitatPlotLookupResult) ?? null,
+    reason: data?.meta?.reason as string | undefined,
+  };
 }
 
 export type AdminCountry = {
