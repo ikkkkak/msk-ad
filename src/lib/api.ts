@@ -1685,6 +1685,21 @@ export type AdminLandmark = {
 export async function adminUpdateLandmark(
   id: number,
   body: Partial<{
+    title: string;
+    description: string;
+    price: number;
+    area: number;
+    area_unit: string;
+    land_type: string;
+    zoning: string;
+    district: string;
+    region: string;
+    plot_number: string;
+    elevation_m: number;
+    video_url: string;
+    media_type: string;
+    images: string[];
+    sides: string[];
     is_investment_opportunity: boolean;
     is_good_deal: boolean;
     is_gold: boolean;
