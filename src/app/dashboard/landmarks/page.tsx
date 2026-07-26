@@ -2,6 +2,23 @@
 
 import { useEffect, useState } from "react";
 import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { restrictToParentElement } from "@dnd-kit/modifiers";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   listAdminLandmarks,
   adminVerifyLandmark,
   adminUpdateLandmark,
@@ -30,6 +47,77 @@ import Image from "next/image";
 import { LandmarkMapEditor } from "@/components/landmark-map-editor";
 
 const BRAND = "#D16024";
+
+// A single draggable image row in the edit sheet's image organizer.
+// id is the array index as a string; the first image is the cover.
+function SortableImage({
+  id,
+  url,
+  index,
+  onRemove,
+}: {
+  id: string;
+  url: string;
+  index: number;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 50 : undefined,
+      }}
+      className={`flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 ${
+        isDragging ? "shadow-lg ring-2 ring-primary/40" : ""
+      }`}
+    >
+      {/* Drag handle */}
+      <button
+        type="button"
+        aria-label="Drag to reorder"
+        className="cursor-grab active:cursor-grabbing touch-none px-1 text-muted-foreground hover:text-foreground select-none"
+        {...attributes}
+        {...listeners}
+      >
+        ⠿
+      </button>
+      <div className="relative">
+        <Image
+          src={url}
+          alt=""
+          width={48}
+          height={48}
+          unoptimized
+          className="h-12 w-12 rounded object-cover border"
+        />
+        {index === 0 && (
+          <span className="absolute -top-1.5 -left-1.5 rounded bg-primary px-1 text-[9px] font-semibold leading-tight text-primary-foreground shadow">
+            Cover
+          </span>
+        )}
+      </div>
+      <span className="flex-1 truncate text-xs text-muted-foreground">{url}</span>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="text-red-600"
+        onClick={onRemove}
+      >
+        Remove
+      </Button>
+    </div>
+  );
+}
 
 function InfoRow({ label, value }: { label: string; value?: string | null }) {
   if (!value?.trim()) return null;
@@ -368,6 +456,25 @@ export default function AdminLandmarksPage() {
     | { status: "error"; message: string }
     | null
   >(null);
+
+  // Drag-to-reorder for the image organizer. Pointer needs a small activation
+  // distance so a click on "Remove" isn't swallowed as a drag.
+  const imageSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  function handleImagesDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setEditForm((f) => {
+      if (!f) return f;
+      const from = Number(active.id);
+      const to = Number(over.id);
+      if (Number.isNaN(from) || Number.isNaN(to)) return f;
+      return { ...f, images: arrayMove(f.images, from, to) };
+    });
+  }
 
   function openEdit(l: AdminLandmark) {
     setEditForm({
@@ -1134,37 +1241,44 @@ export default function AdminLandmarksPage() {
 
               {/* Images CRUD */}
               <div>
-                <Label className="text-xs">Images ({editForm.images.length})</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Images ({editForm.images.length})</Label>
+                  {editForm.images.length > 1 && (
+                    <span className="text-[11px] text-muted-foreground">
+                      Drag ⠿ to reorder · first is the cover
+                    </span>
+                  )}
+                </div>
                 <div className="mt-1 space-y-2">
-                  {editForm.images.map((url, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <Image
-                        src={url}
-                        alt=""
-                        width={48}
-                        height={48}
-                        unoptimized
-                        className="h-12 w-12 rounded object-cover border"
-                      />
-                      <span className="flex-1 truncate text-xs text-muted-foreground">
-                        {url}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-red-600"
-                        onClick={() =>
-                          setEditForm((f) =>
-                            f
-                              ? { ...f, images: f.images.filter((_, j) => j !== i) }
-                              : f,
-                          )
-                        }
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
+                  <DndContext
+                    sensors={imageSensors}
+                    collisionDetection={closestCenter}
+                    modifiers={[restrictToParentElement]}
+                    onDragEnd={handleImagesDragEnd}
+                  >
+                    <SortableContext
+                      items={editForm.images.map((_, i) => String(i))}
+                      strategy={rectSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {editForm.images.map((url, i) => (
+                          <SortableImage
+                            key={`${i}:${url}`}
+                            id={String(i)}
+                            url={url}
+                            index={i}
+                            onRemove={() =>
+                              setEditForm((f) =>
+                                f
+                                  ? { ...f, images: f.images.filter((_, j) => j !== i) }
+                                  : f,
+                              )
+                            }
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                   <label className="flex items-center justify-center gap-2 cursor-pointer rounded-md border border-dashed px-3 py-3 text-sm text-muted-foreground hover:bg-accent/40 transition">
                     <input
                       type="file"
