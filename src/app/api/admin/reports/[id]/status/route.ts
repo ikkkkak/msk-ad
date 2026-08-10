@@ -4,7 +4,7 @@ const API_BASE_URL = process.env.API_BASE_URL || "http://192.168.100.15:4000";
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const authHeader = request.headers.get("authorization");
@@ -17,7 +17,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const reportId = params.id;
+    const { id: reportId } = await params;
 
     const response = await fetch(
       `${API_BASE_URL}/api/admin/reports/${reportId}/status`,
