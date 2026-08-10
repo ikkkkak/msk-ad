@@ -9,24 +9,76 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AdminCity, AdminZone, AdminQuartier, listAdminCities, listAdminZones, listAdminQuartiers, createCity, updateCity, deleteCity, createZone, updateZone, deleteZone, createQuartier, updateQuartier, deleteQuartier } from "@/lib/api";
+import {
+  AdminCity,
+  AdminCountry,
+  AdminZone,
+  AdminQuartier,
+  listAdminCountries,
+  listAdminCities,
+  listAdminZones,
+  listAdminQuartiers,
+  createCountry,
+  updateCountry,
+  deleteCountry,
+  createCity,
+  updateCity,
+  deleteCity,
+  createZone,
+  updateZone,
+  deleteZone,
+  createQuartier,
+  updateQuartier,
+  deleteQuartier,
+} from "@/lib/api";
 import { toast } from "sonner";
-import { Plus, Edit, Trash2, MapPin, Building, Layers } from "lucide-react";
+import { Plus, Edit, Trash2, MapPin, Building, Layers, FileJson, Globe } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { LocationBulkImport } from "@/components/location-bulk-import";
+import { bulkImportLocations } from "@/lib/api";
+import { LOCATION_BULK_QUARTIERS_ONLY_EXAMPLE } from "@/lib/locationBulkFormat";
+
+function defaultCountryRow(countries: AdminCountry[]): AdminCountry | undefined {
+  return countries.find((c) => c.code === "MR") ?? countries[0];
+}
+
+function emptyCityForm(countries: AdminCountry[]) {
+  const c = defaultCountryRow(countries);
+  return {
+    name: "",
+    name_ar: "",
+    country_id: c?.id ?? 0,
+    country: c?.name ?? "Mauritania",
+    country_ar: c?.name_ar ?? "موريتانيا",
+  };
+}
 
 export default function CitiesPage() {
+  const [countries, setCountries] = useState<AdminCountry[]>([]);
   const [cities, setCities] = useState<AdminCity[]>([]);
   const [zones, setZones] = useState<AdminZone[]>([]);
   const [quartiers, setQuartiers] = useState<AdminQuartier[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("cities");
+  const [activeTab, setActiveTab] = useState("countries");
 
-  // City form state
-  const [cityForm, setCityForm] = useState({
+  const [countryForm, setCountryForm] = useState({
+    code: "",
     name: "",
     name_ar: "",
-    country: "Mauritania",
-    country_ar: "موريتانيا",
+    name_fr: "",
+    sort_order: 0,
+    is_active: true,
   });
+  const [editingCountry, setEditingCountry] = useState<AdminCountry | null>(null);
+
+  // City form state
+  const [cityForm, setCityForm] = useState(emptyCityForm([]));
   const [editingCity, setEditingCity] = useState<AdminCity | null>(null);
 
   // Zone form state
@@ -57,14 +109,19 @@ export default function CitiesPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [citiesRes, zonesRes, quartiersRes] = await Promise.all([
+      const [countriesRes, citiesRes, zonesRes, quartiersRes] = await Promise.all([
+        listAdminCountries(),
         listAdminCities(),
         listAdminZones(),
         listAdminQuartiers(),
       ]);
+      setCountries(countriesRes.data);
       setCities(citiesRes.data);
       setZones(zonesRes.data);
       setQuartiers(quartiersRes.data);
+      if (!editingCity && cityForm.country_id === 0 && countriesRes.data.length > 0) {
+        setCityForm(emptyCityForm(countriesRes.data));
+      }
     } catch (error) {
       toast.error("Failed to load data");
       console.error(error);
@@ -73,16 +130,128 @@ export default function CitiesPage() {
     }
   };
 
+  const handleCreateCountry = async () => {
+    try {
+      if (!countryForm.code.trim() || !countryForm.name || !countryForm.name_ar) {
+        toast.error("Code, English name, and Arabic name are required");
+        return;
+      }
+      await createCountry({
+        code: countryForm.code.trim().toUpperCase(),
+        name: countryForm.name.trim(),
+        name_ar: countryForm.name_ar.trim(),
+        name_fr: countryForm.name_fr.trim() || undefined,
+        is_active: countryForm.is_active,
+        sort_order: countryForm.sort_order,
+      });
+      toast.success("Country created successfully");
+      setCountryForm({
+        code: "",
+        name: "",
+        name_ar: "",
+        name_fr: "",
+        sort_order: 0,
+        is_active: true,
+      });
+      loadData();
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create country",
+      );
+      console.error(error);
+    }
+  };
+
+  const handleUpdateCountry = async () => {
+    try {
+      if (!editingCountry || !countryForm.code.trim() || !countryForm.name || !countryForm.name_ar) {
+        toast.error("Code, English name, and Arabic name are required");
+        return;
+      }
+      await updateCountry(editingCountry.id, {
+        code: countryForm.code.trim().toUpperCase(),
+        name: countryForm.name.trim(),
+        name_ar: countryForm.name_ar.trim(),
+        name_fr: countryForm.name_fr.trim(),
+        is_active: countryForm.is_active,
+        sort_order: countryForm.sort_order,
+      });
+      toast.success("Country updated successfully");
+      setEditingCountry(null);
+      setCountryForm({
+        code: "",
+        name: "",
+        name_ar: "",
+        name_fr: "",
+        sort_order: 0,
+        is_active: true,
+      });
+      loadData();
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update country",
+      );
+      console.error(error);
+    }
+  };
+
+  const handleDeleteCountry = async (country: AdminCountry) => {
+    if (!confirm(`Delete country "${country.name}" (${country.code})?`)) return;
+    try {
+      await deleteCountry(country.id);
+      toast.success("Country deleted successfully");
+      loadData();
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete country",
+      );
+      console.error(error);
+    }
+  };
+
+  const startEditCountry = (country: AdminCountry) => {
+    setEditingCountry(country);
+    setCountryForm({
+      code: country.code,
+      name: country.name,
+      name_ar: country.name_ar,
+      name_fr: country.name_fr || "",
+      sort_order: country.sort_order ?? 0,
+      is_active: country.is_active,
+    });
+  };
+
+  const applyCountryToCityForm = (countryId: number) => {
+    const c = countries.find((x) => x.id === countryId);
+    if (!c) return;
+    setCityForm((prev) => ({
+      ...prev,
+      country_id: c.id,
+      country: c.name,
+      country_ar: c.name_ar,
+    }));
+  };
+
   const handleCreateCity = async () => {
     try {
       if (!cityForm.name || !cityForm.name_ar) {
         toast.error("Name and Arabic name are required");
         return;
       }
+      if (!cityForm.country_id) {
+        toast.error("Please select a country");
+        return;
+      }
 
-      await createCity(cityForm);
+      await createCity({
+        name: cityForm.name,
+        name_ar: cityForm.name_ar,
+        country: cityForm.country,
+        country_ar: cityForm.country_ar,
+        country_id: cityForm.country_id,
+      });
       toast.success("City created successfully");
-      setCityForm({ name: "", name_ar: "", country: "Mauritania", country_ar: "موريتانيا" });
+      setCityForm(emptyCityForm(countries));
       loadData();
     } catch (error) {
       toast.error("Failed to create city");
@@ -97,10 +266,16 @@ export default function CitiesPage() {
         return;
       }
 
-      await updateCity(editingCity.id, cityForm);
+      await updateCity(editingCity.id, {
+        name: cityForm.name,
+        name_ar: cityForm.name_ar,
+        country: cityForm.country,
+        country_ar: cityForm.country_ar,
+        country_id: cityForm.country_id || undefined,
+      });
       toast.success("City updated successfully");
       setEditingCity(null);
-      setCityForm({ name: "", name_ar: "", country: "Mauritania", country_ar: "موريتانيا" });
+      setCityForm(emptyCityForm(countries));
       loadData();
     } catch (error) {
       toast.error("Failed to update city");
@@ -174,6 +349,7 @@ export default function CitiesPage() {
     setCityForm({
       name: city.name,
       name_ar: city.name_ar,
+      country_id: city.country_id ?? city.countryRef?.id ?? 0,
       country: city.country,
       country_ar: city.country_ar,
     });
@@ -222,163 +398,77 @@ export default function CitiesPage() {
         toast.error("Please select a zone first");
         return;
       }
-
       if (!quartierJsonInput.trim()) {
         toast.error("Please provide JSON data");
         return;
       }
 
-      let quartiersData;
+      let parsed: unknown;
       try {
-        // Trim the input to remove any leading/trailing whitespace
-        const trimmedInput = quartierJsonInput.trim();
-        quartiersData = JSON.parse(trimmedInput);
-      } catch (error: any) {
-        toast.error(`Invalid JSON format: ${error.message || 'Unknown parsing error'}`);
-        console.error("JSON Parse Error:", error);
-        console.error("JSON Input length:", quartierJsonInput.length);
-        console.error("First 200 chars of JSON:", quartierJsonInput.substring(0, 200));
+        parsed = JSON.parse(quartierJsonInput.trim());
+      } catch (error: unknown) {
+        toast.error(
+          `Invalid JSON: ${error instanceof Error ? error.message : "parse error"}`,
+        );
         return;
       }
 
-      if (!Array.isArray(quartiersData)) {
-        toast.error(`JSON must be an array. Received type: ${typeof quartiersData}`);
-        console.error("Parsed data (not an array):", quartiersData);
-        return;
-      }
-
-      if (quartiersData.length === 0) {
-        toast.error("JSON array is empty");
-        return;
-      }
-
-      // Debug: Log first item structure
-      console.log("First quartier item:", quartiersData[0]);
-      console.log("First quartier keys:", quartiersData[0] ? Object.keys(quartiersData[0]) : 'null/undefined');
-
-      let successCount = 0;
-      let errorCount = 0;
-      const errors: string[] = [];
-      const createdQuartiers: { id: number; name: string }[] = [];
-
-      for (let i = 0; i < quartiersData.length; i++) {
-        const quartier = quartiersData[i];
-        try {
-          // Validate that quartier is an object
-          if (!quartier || typeof quartier !== 'object') {
-            errors.push(`Quartier at index ${i} is not a valid object: ${JSON.stringify(quartier)}`);
-            errorCount++;
-            continue;
-          }
-
-          // Validate and trim fields
-          const name = quartier.name && typeof quartier.name === 'string' ? quartier.name.trim() : '';
-          const nameAr = quartier.name_ar && typeof quartier.name_ar === 'string' ? quartier.name_ar.trim() : '';
-          
-          if (!name || !nameAr) {
-            const debugInfo = {
-              index: i,
-              hasName: !!quartier.name,
-              nameType: typeof quartier.name,
-              nameValue: quartier.name,
-              hasNameAr: !!quartier.name_ar,
-              nameArType: typeof quartier.name_ar,
-              nameArValue: quartier.name_ar,
-              fullObject: JSON.stringify(quartier),
-            };
-            errors.push(`Quartier at index ${i} is missing required fields (name, name_ar). Debug: ${JSON.stringify(debugInfo)}`);
-            errorCount++;
-            continue;
-          }
-
-          const body: any = {
-            zone_id: quartierForm.zone_id, // Use selected zone_id from form
-            name: name,
-            name_ar: nameAr,
-          };
-          
-          // Handle parent_quartier_id - can be:
-          // 1. null or undefined (top-level quartier)
-          // 2. A number (index in array + 1, referencing a previously created quartier in this batch)
-          // 3. A string like "1" (index reference)
-          if (quartier.parent_quartier_id !== undefined && quartier.parent_quartier_id !== null) {
-            let parentId: number | null = null;
-            
-            // If it's a number, treat it as an index reference (1-based)
-            if (typeof quartier.parent_quartier_id === 'number' && quartier.parent_quartier_id > 0) {
-              const parentIndex = quartier.parent_quartier_id - 1;
-              if (parentIndex >= 0 && parentIndex < createdQuartiers.length) {
-                parentId = createdQuartiers[parentIndex].id;
-              } else {
-                errors.push(`Quartier "${quartier.name}": Invalid parent_quartier_id reference (${quartier.parent_quartier_id}). Must reference a quartier created earlier in the array (use 1-based index).`);
-              }
-            }
-            
-            if (parentId) {
-              body.parent_quartier_id = parentId;
-            }
-          }
-
-          const result = await createQuartier(body);
-          const createdId = result?.data?.id || result?.id;
-          if (createdId) {
-            createdQuartiers.push({ id: createdId, name: name });
-          }
-          successCount++;
-        } catch (error: any) {
-          errorCount++;
-          const errorName = quartier?.name || quartier?.name_ar || `at index ${i}`;
-          errors.push(`Failed to create "${errorName}": ${error.message || 'Unknown error'}`);
-        }
-      }
-
-      if (successCount > 0) {
-        toast.success(`Successfully created ${successCount} quartier(s)${errorCount > 0 ? `, ${errorCount} failed` : ''}`);
+      let quartiersList: Record<string, unknown>[];
+      if (Array.isArray(parsed)) {
+        quartiersList = parsed as Record<string, unknown>[];
+      } else if (
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as { quartiers?: unknown }).quartiers)
+      ) {
+        quartiersList = (parsed as { quartiers: Record<string, unknown>[] }).quartiers;
       } else {
-        toast.error(`Failed to create all quartiers. Errors: ${errors.slice(0, 3).join('; ')}${errors.length > 3 ? '...' : ''}`);
+        toast.error("JSON must be an array of quartiers or { version: 1, quartiers: [...] }");
+        return;
       }
 
-      if (errors.length > 0) {
-        console.error("Quartier creation errors:", errors);
+      const normalized = quartiersList.map((q) => ({
+        name: q.name,
+        name_ar: q.name_ar,
+        parent_index:
+          q.parent_index ??
+          (typeof q.parent_quartier_id === "number" ? q.parent_quartier_id : null),
+        key: q.key,
+        parent_key: q.parent_key,
+        sub_quartiers: q.sub_quartiers,
+      }));
+
+      const res = await bulkImportLocations({
+        version: 1,
+        skip_existing: true,
+        zone_id: quartierForm.zone_id,
+        quartiers: normalized,
+      });
+
+      const d = res.data;
+      toast.success(
+        `Created ${d.quartiers_created} quartier(s), skipped ${d.quartiers_skipped}`,
+      );
+      if (d.errors?.length) {
+        console.warn(d.errors);
+        toast.warning(`${d.errors.length} warning(s) — see console`);
       }
 
       setQuartierJsonInput("");
       setShowJsonInput(false);
       loadData();
-    } catch (error: any) {
-      toast.error(`Failed to process JSON: ${error.message}`);
-      console.error(error);
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to import quartiers",
+      );
     }
   };
 
   const loadExampleJson = () => {
-    const example = [
-      {
-        "name": "Downtown Center",
-        "name_ar": "وسط المدينة",
-        "parent_quartier_id": null
-      },
-      {
-        "name": "Commercial District",
-        "name_ar": "المنطقة التجارية",
-        "parent_quartier_id": null
-      },
-      {
-        "name": "Shopping Area",
-        "name_ar": "منطقة التسوق",
-        "parent_quartier_id": null
-      },
-      {
-        "name": "Main Market",
-        "name_ar": "السوق الرئيسي",
-        "parent_quartier_id": 3
-      },
-      {
-        "name": "Small Shops",
-        "name_ar": "المحلات الصغيرة",
-        "parent_quartier_id": 3
-      }
-    ];
+    const example = {
+      ...LOCATION_BULK_QUARTIERS_ONLY_EXAMPLE,
+      zone_id: quartierForm.zone_id > 0 ? quartierForm.zone_id : 0,
+    };
     setQuartierJsonInput(JSON.stringify(example, null, 2));
   };
 
@@ -435,10 +525,19 @@ export default function CitiesPage() {
   };
 
   const cancelEdit = () => {
+    setEditingCountry(null);
     setEditingCity(null);
     setEditingZone(null);
     setEditingQuartier(null);
-    setCityForm({ name: "", name_ar: "", country: "Mauritania", country_ar: "موريتانيا" });
+    setCountryForm({
+      code: "",
+      name: "",
+      name_ar: "",
+      name_fr: "",
+      sort_order: 0,
+      is_active: true,
+    });
+    setCityForm(emptyCityForm(countries));
     setZoneForm({ city_id: 0, name: "", name_ar: "", description: "", description_ar: "" });
     setQuartierForm({ zone_id: 0, parent_quartier_id: 0, name: "", name_ar: "" });
   };
@@ -455,13 +554,19 @@ export default function CitiesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Cities, Zones & Quartiers Management</h1>
-          <p className="text-muted-foreground">Manage cities, zones and quartiers for property listings</p>
+          <h1 className="text-3xl font-bold">Countries, Cities, Zones & Quartiers</h1>
+          <p className="text-muted-foreground">
+            Location hierarchy: Country → City → Zone → Quartier (used in listings and search filters)
+          </p>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
+          <TabsTrigger value="countries" className="flex items-center gap-2">
+            <Globe className="h-4 w-4" />
+            Countries
+          </TabsTrigger>
           <TabsTrigger value="cities" className="flex items-center gap-2">
             <Building className="h-4 w-4" />
             Cities
@@ -474,7 +579,182 @@ export default function CitiesPage() {
             <Layers className="h-4 w-4" />
             Quartiers
           </TabsTrigger>
+          <TabsTrigger value="bulk" className="flex items-center gap-2">
+            <FileJson className="h-4 w-4" />
+            Bulk import
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="countries" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5" />
+                {editingCountry ? "Edit Country" : "Add New Country"}
+              </CardTitle>
+              <CardDescription>
+                {editingCountry
+                  ? "Update country used in app filters and listing origin"
+                  : "Add a country before creating its cities (use ISO-style codes: MR, SN, MA…)"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="country-code">Code</Label>
+                  <Input
+                    id="country-code"
+                    value={countryForm.code}
+                    onChange={(e) =>
+                      setCountryForm({
+                        ...countryForm,
+                        code: e.target.value.toUpperCase(),
+                      })
+                    }
+                    placeholder="MR"
+                    maxLength={8}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="country-sort">Sort order</Label>
+                  <Input
+                    id="country-sort"
+                    type="number"
+                    value={countryForm.sort_order}
+                    onChange={(e) =>
+                      setCountryForm({
+                        ...countryForm,
+                        sort_order: parseInt(e.target.value, 10) || 0,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2 flex flex-col justify-end">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={countryForm.is_active}
+                      onChange={(e) =>
+                        setCountryForm({
+                          ...countryForm,
+                          is_active: e.target.checked,
+                        })
+                      }
+                    />
+                    Active (visible in app)
+                  </label>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="country-name">Name (English)</Label>
+                  <Input
+                    id="country-name"
+                    value={countryForm.name}
+                    onChange={(e) =>
+                      setCountryForm({ ...countryForm, name: e.target.value })
+                    }
+                    placeholder="Mauritania"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="country-name-ar">Name (Arabic)</Label>
+                  <Input
+                    id="country-name-ar"
+                    value={countryForm.name_ar}
+                    onChange={(e) =>
+                      setCountryForm({ ...countryForm, name_ar: e.target.value })
+                    }
+                    placeholder="موريتانيا"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 max-w-md">
+                <Label htmlFor="country-name-fr">Name (French, optional)</Label>
+                <Input
+                  id="country-name-fr"
+                  value={countryForm.name_fr}
+                  onChange={(e) =>
+                    setCountryForm({ ...countryForm, name_fr: e.target.value })
+                  }
+                  placeholder="Mauritanie"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={editingCountry ? handleUpdateCountry : handleCreateCountry}
+                >
+                  {editingCountry ? "Update Country" : "Create Country"}
+                </Button>
+                {editingCountry && (
+                  <Button variant="outline" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>All Countries</CardTitle>
+              <CardDescription>
+                Delete is blocked while cities are still linked to a country
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Arabic</TableHead>
+                    <TableHead>French</TableHead>
+                    <TableHead>Order</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {countries.map((country) => (
+                    <TableRow key={country.id}>
+                      <TableCell className="font-mono font-medium">
+                        {country.code}
+                      </TableCell>
+                      <TableCell>{country.name}</TableCell>
+                      <TableCell>{country.name_ar}</TableCell>
+                      <TableCell>{country.name_fr || "—"}</TableCell>
+                      <TableCell>{country.sort_order}</TableCell>
+                      <TableCell>
+                        <Badge variant={country.is_active ? "default" : "secondary"}>
+                          {country.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditCountry(country)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteCountry(country)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="cities" className="space-y-4">
           <Card>
@@ -508,25 +788,32 @@ export default function CitiesPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="city-country">Country (English)</Label>
-                  <Input
-                    id="city-country"
-                    value={cityForm.country}
-                    onChange={(e) => setCityForm({ ...cityForm, country: e.target.value })}
-                    placeholder="e.g., Mauritania"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="city-country-ar">Country (Arabic)</Label>
-                  <Input
-                    id="city-country-ar"
-                    value={cityForm.country_ar}
-                    onChange={(e) => setCityForm({ ...cityForm, country_ar: e.target.value })}
-                    placeholder="e.g., موريتانيا"
-                  />
-                </div>
+              <div className="space-y-2 max-w-md">
+                <Label>Country</Label>
+                <Select
+                  value={
+                    cityForm.country_id > 0
+                      ? String(cityForm.country_id)
+                      : undefined
+                  }
+                  onValueChange={(v) => applyCountryToCityForm(Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select country" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {countries.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name} ({c.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {countries.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Add a country in the Countries tab first.
+                  </p>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button onClick={editingCity ? handleUpdateCity : handleCreateCity}>
@@ -563,7 +850,11 @@ export default function CitiesPage() {
                     <TableRow key={city.id}>
                       <TableCell className="font-medium">{city.name}</TableCell>
                       <TableCell>{city.name_ar}</TableCell>
-                      <TableCell>{city.country}</TableCell>
+                      <TableCell>
+                        {city.countryRef
+                          ? `${city.countryRef.name} (${city.countryRef.code})`
+                          : city.country}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={city.is_active ? "default" : "secondary"}>
                           {city.is_active ? "Active" : "Inactive"}
@@ -796,15 +1087,23 @@ export default function CitiesPage() {
                           rows={20}
                         />
                         <div className="text-sm text-muted-foreground space-y-1">
-                          <p><strong>Format:</strong> Array of quartier objects</p>
-                          <p><strong>Required fields:</strong> name (string), name_ar (string)</p>
-                          <p><strong>Optional fields:</strong> parent_quartier_id (number | null)</p>
-                          <div className="mt-2 p-3 bg-muted rounded-md space-y-1">
-                            <p className="font-semibold mb-1">Example Structure:</p>
-                            <p className="text-xs">• <strong>Parent quartier:</strong> Set parent_quartier_id to null or omit it</p>
-                            <p className="text-xs">• <strong>Child quartier:</strong> Set parent_quartier_id to the 1-based index of the parent quartier in your array (e.g., 3 = 3rd quartier in the array)</p>
-                            <p className="text-xs mt-2">• <strong>Note:</strong> All quartiers will be added to the selected zone above. Do NOT include zone_id in the JSON.</p>
-                          </div>
+                          <p>
+                            <strong>Format:</strong> Use the{" "}
+                            <button
+                              type="button"
+                              className="underline text-primary"
+                              onClick={() => setActiveTab("bulk")}
+                            >
+                              Bulk import
+                            </button>{" "}
+                            tab for full docs, or a quartiers array here.
+                          </p>
+                          <p><strong>Required:</strong> name, name_ar</p>
+                          <p><strong>Parent:</strong> parent_index (1-based in array) or parent_key / sub_quartiers</p>
+                          <p className="text-xs mt-2">
+                            Or paste{" "}
+                            <code className="bg-muted px-1 rounded">{`{ "version": 1, "quartiers": [...] }`}</code>
+                          </p>
                         </div>
                       </div>
                       <Button 
@@ -945,6 +1244,23 @@ export default function CitiesPage() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="bulk" className="space-y-4">
+          <LocationBulkImport
+            cities={cities.map((c) => ({
+              id: c.id,
+              name: c.name,
+              name_ar: c.name_ar,
+            }))}
+            zones={zones.map((z) => ({
+              id: z.id,
+              name: z.name,
+              name_ar: z.name_ar,
+              city: z.city,
+            }))}
+            onSuccess={loadData}
+          />
         </TabsContent>
       </Tabs>
     </div>

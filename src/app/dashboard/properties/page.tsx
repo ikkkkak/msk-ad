@@ -1,13 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listAdminProperties, AdminProperty, updatePropertyStatus, flagProperty } from "@/lib/api";
+import {
+  listAdminProperties,
+  AdminProperty,
+  updatePropertyStatus,
+  flagProperty,
+  deleteAdminProperty,
+} from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Image from "next/image";
+
+function propertyHostNote(p: AdminProperty): string {
+  return String(p.hostPrivateNote || p.host_private_note || "").trim();
+}
+
+function propertyReviewNote(p: AdminProperty): string {
+  return String(p.reviewNotes || p.review_notes || p.note || "").trim();
+}
 
 export default function AdminPropertiesPage() {
   const [items, setItems] = useState<AdminProperty[]>([]);
@@ -34,6 +48,11 @@ export default function AdminPropertiesPage() {
   async function onApprove(id: number) { await updatePropertyStatus(id, { status: "approved", note: "Approved from admin" }); fetchData(page); }
   async function onReject(id: number) { await updatePropertyStatus(id, { status: "rejected", note: "Rejected from admin" }); fetchData(page); }
   async function onFlag(id: number) { await flagProperty(id, { reason: "Policy violation" }); fetchData(page); }
+  async function onDelete(id: number) {
+    if (!window.confirm("Delete this rent property permanently?")) return;
+    await deleteAdminProperty(id);
+    fetchData(page);
+  }
 
   return (
     <div className="p-6 space-y-4">
@@ -61,16 +80,18 @@ export default function AdminPropertiesPage() {
               <TableHead>Property</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Host notes</TableHead>
+              <TableHead>Admin note</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={5}>Loading…</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6}>Loading…</TableCell></TableRow>
             ) : error ? (
-              <TableRow><TableCell colSpan={5} className="text-red-600">{error}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-red-600">{error}</TableCell></TableRow>
             ) : items.length === 0 ? (
-              <TableRow><TableCell colSpan={5}>No properties found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6}>No properties found</TableCell></TableRow>
             ) : (
               items.map((p) => {
                 const firstImage = Array.isArray(p.images) ? (typeof p.images[0] === 'string' ? p.images[0] as string : (p.images[0] as any)?.url || (p.images[0] as any)?.src) : undefined;
@@ -90,11 +111,28 @@ export default function AdminPropertiesPage() {
                     </TableCell>
                     <TableCell>{[p.city, p.state, p.country].filter(Boolean).join(", ")}</TableCell>
                     <TableCell className="uppercase text-xs tracking-wide">{p.status || "pending"}</TableCell>
+                    <TableCell className="max-w-xs">
+                      <span
+                        className="text-xs whitespace-pre-wrap line-clamp-3"
+                        title={propertyHostNote(p) || undefined}
+                      >
+                        {propertyHostNote(p) || "—"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-[10rem]">
+                      <span
+                        className="text-xs text-muted-foreground line-clamp-2"
+                        title={propertyReviewNote(p) || undefined}
+                      >
+                        {propertyReviewNote(p) || "—"}
+                      </span>
+                    </TableCell>
                     <TableCell className="flex gap-2">
                     <Link href={`/dashboard/properties/${p.ID}`} className="inline-flex h-8 items-center justify-center rounded-md border px-2 text-sm">Review</Link>
                     <Button size="sm" variant="outline" onClick={() => onApprove(p.ID)}>Approve</Button>
                       <Button size="sm" variant="outline" onClick={() => onReject(p.ID)}>Reject</Button>
                       <Button size="sm" variant="destructive" onClick={() => onFlag(p.ID)}>Flag</Button>
+                      <Button size="sm" variant="destructive" onClick={() => onDelete(p.ID)}>Delete</Button>
                     </TableCell>
                   </TableRow>
                 )

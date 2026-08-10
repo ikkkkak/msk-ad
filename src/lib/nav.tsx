@@ -8,6 +8,7 @@ import {
   IconHomeCheck,
   IconMapPin,
   IconMap,
+  IconMap2,
   IconShield,
   IconBuilding,
   IconVideo,
@@ -70,6 +71,7 @@ export const NAV_MAIN: NavItem[] = [
     icon: IconBuilding,
   },
   { title: "Habitat cadastre", url: "/dashboard/habitat-gis", icon: IconMap },
+  { title: "Cadastre map", url: "/dashboard/cadastre-map", icon: IconMap2 },
   {
     title: "Property Types",
     url: "/dashboard/property-types",

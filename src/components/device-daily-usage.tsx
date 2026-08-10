@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDeviceDailyUsage, DeviceDailyUsageData } from "@/lib/api";
+import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 
 function formatTime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -37,6 +39,36 @@ export function DeviceDailyUsageCard() {
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(30);
   const [viewMode, setViewMode] = useState<"daily" | "summary">("summary");
+
+  const chartData = (data?.dailyUsage ?? []).reduce<Array<{
+    date: string;
+    opens: number;
+    uniqueDevices: number;
+  }>>((acc, row) => {
+    const existing = acc.find((x) => x.date === row.date);
+    if (existing) {
+      existing.opens += row.visitCount;
+      existing.uniqueDevices += 1;
+    } else {
+      acc.push({
+        date: row.date,
+        opens: row.visitCount,
+        uniqueDevices: 1,
+      });
+    }
+    return acc;
+  }, []).sort((a, b) => a.date.localeCompare(b.date));
+
+  const chartConfig = {
+    opens: {
+      label: "App Opens",
+      color: "hsl(var(--chart-1))",
+    },
+    uniqueDevices: {
+      label: "Unique Devices",
+      color: "hsl(var(--chart-2))",
+    },
+  } satisfies ChartConfig;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -130,6 +162,62 @@ export function DeviceDailyUsageCard() {
         </div>
       </CardHeader>
       <CardContent>
+        <div className="mb-6">
+          <h3 className="mb-2 text-lg font-semibold">Daily App Opens Graph</h3>
+          <div className="rounded-lg border p-3">
+            <ChartContainer config={chartConfig} className="h-[260px] w-full">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="fillOpens" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-opens)" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="var(--color-opens)" stopOpacity={0.1} />
+                  </linearGradient>
+                  <linearGradient id="fillUniqueDevices" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-uniqueDevices)" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="var(--color-uniqueDevices)" stopOpacity={0.1} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  minTickGap={32}
+                  tickFormatter={(value) =>
+                    new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  }
+                />
+                <ChartTooltip
+                  cursor={false}
+                  content={
+                    <ChartTooltipContent
+                      labelFormatter={(value) =>
+                        new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                      }
+                      indicator="dot"
+                    />
+                  }
+                />
+                <Area
+                  dataKey="opens"
+                  type="natural"
+                  fill="url(#fillOpens)"
+                  stroke="var(--color-opens)"
+                  strokeWidth={2}
+                />
+                <Area
+                  dataKey="uniqueDevices"
+                  type="natural"
+                  fill="url(#fillUniqueDevices)"
+                  stroke="var(--color-uniqueDevices)"
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ChartContainer>
+          </div>
+        </div>
+
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">

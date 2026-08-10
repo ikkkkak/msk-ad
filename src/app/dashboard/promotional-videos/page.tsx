@@ -36,6 +36,12 @@ import {
 } from "@/lib/api";
 import { toast } from "sonner";
 
+function formatListDate(iso: string | undefined): string {
+  if (!iso?.trim()) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
+}
+
 export default function PromotionalVideosPage() {
   const [videos, setVideos] = useState<AdminPromotionalVideo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,11 +129,11 @@ export default function PromotionalVideosPage() {
       }
 
       await createPromotionalVideo({
-        videoURL: finalVideoURL,
-        thumbnailURL: finalThumbnailURL || undefined,
-        title: formData.title,
-        description: formData.description || undefined,
-        caption: formData.caption || undefined,
+        videoURL: finalVideoURL.trim(),
+        thumbnailURL: finalThumbnailURL?.trim() || undefined,
+        title: formData.title.trim(),
+        description: formData.description.trim() || undefined,
+        caption: formData.caption.trim() || undefined,
         durationSec: formData.durationSec || undefined,
       });
 
@@ -437,7 +443,7 @@ export default function PromotionalVideosPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Created:</span>
-                    <span>{new Date(video.createdAt).toLocaleDateString()}</span>
+                    <span>{formatListDate(video.createdAt)}</span>
                   </div>
                   {video.durationSec && (
                     <div className="flex items-center justify-between">

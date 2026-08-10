@@ -15,8 +15,11 @@ export default function LoginPage() {
     setError(null); setLoading(true);
     try {
       const { accessToken } = await loginWithEmailPassword(email, password);
-      document.cookie = `accessToken=${accessToken}; path=/`;
+      document.cookie = `accessToken=${accessToken}; path=/; SameSite=Lax`;
+      // Keep legacy key aliases so all API calls consistently resolve auth.
       localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem("access_token", accessToken);
+      localStorage.setItem("token", accessToken);
       window.location.href = "/dashboard";
     } catch (e: any) {
       setError(e?.message || "Login failed");
